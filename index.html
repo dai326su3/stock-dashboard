@@ -378,7 +378,7 @@ function calcScore(s) {
   let sc = 50;
   if (s.rsi < 35) sc += 10; if (s.rsi > 65) sc -= 10;
   if (s.macd > 0) sc += 8; else sc -= 8;
-  if (s.price >= s.prev) sc += 5; else sc -= 5;
+  if (isPriceUp(s)) sc += 5; else sc -= 5;
   const up = (s.target - s.price) / s.price;
   if (up > 0.2) sc += 10; else if (up > 0.1) sc += 5;
   return Math.min(Math.max(Math.round(sc), 10), 95);
@@ -412,8 +412,28 @@ function posBadge(pos) {
   return `<span class="badge ${c}">${l}</span>`;
 }
 
+function getChangePercent(s) {
+  if (Number.isFinite(Number(s.changePercent))) return Number(s.changePercent);
+  const price = Number(s.price);
+  const prev = Number(s.prev);
+  if (!Number.isFinite(price) || !Number.isFinite(prev) || prev <= 0) return 0;
+  return ((price - prev) / prev) * 100;
+}
+
+function getChangeValue(s) {
+  if (Number.isFinite(Number(s.change))) return Number(s.change);
+  const price = Number(s.price);
+  const prev = Number(s.prev);
+  if (!Number.isFinite(price) || !Number.isFinite(prev)) return 0;
+  return price - prev;
+}
+
+function isPriceUp(s) {
+  return getChangeValue(s) >= 0;
+}
+
 function renderStats() {
-  const up = stocks.filter(s=>s.price>=s.prev).length;
+  const up = stocks.filter(s=>isPriceUp(s)).length;
   document.getElementById('headerStats').innerHTML = `
     <div class="stat-chip">監視 <span>${stocks.length}</span>件</div>
     <div class="stat-chip">上昇 <span class="up">${up}</span>件</div>
@@ -425,8 +445,8 @@ function renderList() {
   const fs = getFiltered();
   document.getElementById('listHeader').textContent = `監視銘柄（${fs.length}件）`;
   document.getElementById('stockList').innerHTML = fs.map(s => {
-    const chg = ((s.price-s.prev)/s.prev*100).toFixed(2);
-    const isUp = s.price >= s.prev;
+    const chg = getChangePercent(s).toFixed(2);
+    const isUp = isPriceUp(s);
     const sc = calcScore(s);
     const scColor = sc>=60?'#059669':sc>=40?'#d97706':'#dc2626';
     const up = ((s.target-s.price)/s.price*100).toFixed(1);
@@ -499,8 +519,8 @@ function genVolData(days=120) {
 function getSituation(s) {
   if(s.rsi<30) return {text:'急落後のリバウンド待ち',color:'#059669',bg:'#d1fae5'};
   if(s.rsi>70) return {text:'買われすぎ・調整に注意',color:'#dc2626',bg:'#fee2e2'};
-  if(s.macd>0 && s.price>=s.prev) return {text:'上昇トレンド継続中',color:'#059669',bg:'#d1fae5'};
-  if(s.macd<0 && s.price<s.prev) return {text:'調整・下落トレンド中',color:'#dc2626',bg:'#fee2e2'};
+  if(s.macd>0 && isPriceUp(s)) return {text:'上昇トレンド継続中',color:'#059669',bg:'#d1fae5'};
+  if(s.macd<0 && !isPriceUp(s)) return {text:'調整・下落トレンド中',color:'#dc2626',bg:'#fee2e2'};
   return {text:'もみ合い・方向感を確認中',color:'#d97706',bg:'#fef3c7'};
 }
 
@@ -515,8 +535,9 @@ function renderDetail() {
   const s = stocks.find(x=>x.id===selectedId); if(!s) return;
   const w = document.getElementById('detailWrap');
   w.classList.add('open');
-  const chg = ((s.price-s.prev)/s.prev*100).toFixed(2);
-  const isUp = s.price>=s.prev;
+  const chg = getChangePercent(s).toFixed(2);
+  const isUp = isPriceUp(s);
+  const changeValue = getChangeValue(s);
   const sit = getSituation(s);
   const osh = getOshime(s);
   const ai = aiResults[s.id];
@@ -545,7 +566,7 @@ function renderDetail() {
       <div class="topbar-right">
         <div>
           <div class="price-big ${isUp?'up':'down'}">${s.price.toLocaleString()}<span style="font-size:16px;font-weight:400;"> 円</span></div>
-          <div class="chg-big ${isUp?'up':'down'}">${isUp?'▲':'▼'}${Math.abs(chg)}% （前日比 ${isUp?'+':''}${(s.price-s.prev).toLocaleString()}円）</div>
+          <div class="chg-big ${isUp?'up':'down'}">${isUp?'▲':'▼'}${Math.abs(chg)}% （前日比 ${isUp?'+':''}${changeValue.toLocaleString()}円）</div>
           <div style="display:flex;gap:8px;margin-top:8px;">
             <span class="trend-badge ${s.rsi<40?'trend-dn':s.rsi>60?'trend-up':'trend-neu'}">短期 ${s.rsi<40?'弱気':s.rsi>60?'強気':'中立'}</span>
             <span class="trend-badge ${s.macd<0?'trend-dn':'trend-up'}">中期 ${s.macd<0?'弱気':'強気'}</span>
@@ -727,7 +748,7 @@ function drawChart5d(s) {
   const ctx = document.getElementById('chart5d'); if(!ctx) return;
   const points = getHistoryData(s, 5);
   const data = points.map(p => p.value);
-  new Chart(ctx, { type:'line', data:{ labels:points.map(p=>p.label), datasets:[{ data, borderColor:s.price>=s.prev?'#059669':'#dc2626', borderWidth:1.5, fill:false, pointRadius:0, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{display:false}, y:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10},callback:v=>v.toLocaleString()}, border:{display:false} } } } });
+  new Chart(ctx, { type:'line', data:{ labels:points.map(p=>p.label), datasets:[{ data, borderColor:isPriceUp(s)?'#059669':'#dc2626', borderWidth:1.5, fill:false, pointRadius:0, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{display:false}, y:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10},callback:v=>v.toLocaleString()}, border:{display:false} } } } });
   const vd = document.getElementById('volBars5d'); if(!vd) return;
   const vols = genVolData(60);
   const maxV = Math.max(...vols);
@@ -798,7 +819,7 @@ async function runAI(id) {
   btn.disabled=true; btn.textContent='分析中...';
   res.innerHTML='<div class="ai-placeholder">Claudeが分析しています...</div>';
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`株式銘柄を分析。${s.code} ${s.name}、現在値${s.price}円、前日比${((s.price-s.prev)/s.prev*100).toFixed(2)}%、RSI:${s.rsi}、MACD:${s.macd}、サポート:${s.s1}円、レジスタンス:${s.r1}円、目標:${s.target}円、損切:${s.stop}円。JSON形式のみ返してください：{"situation":"現在の局面50文字以内","point":"注目ポイント50文字以内","risk":"リスク要因50文字以内"}`}]})});
+    const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`株式銘柄を分析。${s.code} ${s.name}、現在値${s.price}円、前日比${getChangePercent(s).toFixed(2)}%、RSI:${s.rsi}、MACD:${s.macd}、サポート:${s.s1}円、レジスタンス:${s.r1}円、目標:${s.target}円、損切:${s.stop}円。JSON形式のみ返してください：{"situation":"現在の局面50文字以内","point":"注目ポイント50文字以内","risk":"リスク要因50文字以内"}`}]})});
     const d = await r.json();
     const parsed = JSON.parse(d.content?.[0]?.text?.replace(/```json|```/g,'')||'{}');
     aiResults[id]=parsed;
@@ -953,6 +974,8 @@ async function fetchStockPrice(code) {
       name:data.name || STOCK_MASTER[String(code)] || '',
       price,
       prev:Number.isFinite(prev) && prev > 0 ? prev : null,
+      change:Number.isFinite(Number(data.change)) ? Number(data.change) : null,
+      changePercent:Number.isFinite(Number(data.changePercent)) ? Number(data.changePercent) : null,
       history:Array.isArray(data.history) ? data.history : [],
       updated:data.updated || ''
     };
@@ -982,6 +1005,8 @@ async function updateAllPrices() {
       // GASから前日終値が返ればそれを優先。なければ更新前の価格を前日扱いにする。
       s.prev = data.prev || s.price;
       s.price = data.price;
+      s.change = data.change;
+      s.changePercent = data.changePercent;
       if (Array.isArray(data.history) && data.history.length > 0) s.history = data.history;
       if (data.name && (!s.name || s.name === s.code)) s.name = data.name;
       s.updated = data.updated || new Date().toLocaleString('ja-JP');
