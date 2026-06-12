@@ -41,7 +41,41 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 
 /* メインレイアウト */
 .main { max-width: 1600px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: 320px 1fr; gap: 16px; min-height: calc(100vh - 60px); }
-@media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+
+/* スマホ：タブ切り替え式 */
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; padding: 8px; gap: 0; }
+  .stock-list-wrap { max-height: none; padding-right: 0; }
+  .detail-scroll { max-height: none; }
+  .detail-grid { grid-template-columns: 1fr !important; }
+  .detail-grid-2 { grid-template-columns: 1fr !important; }
+  .detail-grid-3 { grid-template-columns: 1fr !important; }
+  .tech-grid { grid-template-columns: 1fr 1fr; }
+  .scenario-grid { grid-template-columns: 1fr; }
+  .oshime-grid { grid-template-columns: 1fr; gap: 6px; }
+  .topbar-inner { flex-direction: column; gap: 10px; }
+  .topbar-right { width: 100%; justify-content: space-between; }
+  .price-big { font-size: 28px; }
+  .header-inner { flex-wrap: wrap; gap: 8px; }
+  .header-left { flex-wrap: wrap; gap: 8px; }
+  .header-stats { display: none; }
+  .filters { gap: 4px; }
+  .filter-btn { padding: 4px 10px; font-size: 11px; }
+  .btn-add { padding: 6px 12px; font-size: 12px; }
+  .detail-topbar { border-radius: 8px; padding: 12px; }
+  .dc { border-radius: 8px; padding: 12px; }
+  /* スマホ用タブ */
+  .mobile-tab { display: flex !important; }
+  .mobile-list { display: block; }
+  .mobile-detail { display: none; }
+  .mobile-detail.show { display: block; }
+  .mobile-list.hide { display: none; }
+}
+
+/* PCではタブ非表示 */
+.mobile-tab { display: none; background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 57px; z-index: 99; }
+.mobile-tab-btn { flex: 1; padding: 10px; border: none; background: none; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+.mobile-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* 銘柄リスト */
 .stock-list { display: flex; flex-direction: column; gap: 8px; }
@@ -231,28 +265,33 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
         <button class="filter-btn" onclick="setFilter('high',this)">ハイリスク</button>
         <button class="filter-btn" onclick="setFilter('watch',this)">ウォッチ</button>
       </div>
+      <button id="updateBtn" onclick="updateAllPrices()" style="background:#059669;border:none;color:white;border-radius:8px;padding:8px 14px;cursor:pointer;font-weight:700;font-size:13px;white-space:nowrap;">🔄 株価更新</button>
       <button class="btn-add" onclick="openModal()">＋ 銘柄追加</button>
     </div>
   </div>
 </div>
 
+<!-- スマホ用タブ -->
+<div class="mobile-tab" id="mobileTab">
+  <button class="mobile-tab-btn active" id="tabList" onclick="switchTab('list')">📋 銘柄一覧</button>
+  <button class="mobile-tab-btn" id="tabDetail" onclick="switchTab('detail')">📊 詳細</button>
+</div>
+
 <!-- メイン -->
 <div class="main">
   <!-- 左：銘柄リスト -->
-  <div class="stock-list-wrap">
+  <div class="stock-list-wrap mobile-list" id="mobileList">
     <div class="list-header" id="listHeader">監視銘柄</div>
     <div class="stock-list" id="stockList"></div>
   </div>
 
   <!-- 右：詳細 -->
-  <div class="detail-scroll">
-    <div class="detail-wrap" id="detailWrap">
-      <!-- JS で描画 -->
-    </div>
-    <div id="emptyDetail" style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--muted);flex-direction:column;gap:12px;">
+  <div class="detail-scroll mobile-detail" id="mobileDetail">
+    <div class="detail-wrap" id="detailWrap"></div>
+    <div id="emptyDetail" style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--muted);flex-direction:column;gap:12px;padding:40px 20px;text-align:center;">
       <div style="font-size:48px;">📊</div>
       <div style="font-size:16px;font-weight:700;">銘柄を選択してください</div>
-      <div style="font-size:13px;">左のリストから銘柄をクリックすると詳細が表示されます</div>
+      <div style="font-size:13px;">一覧から銘柄をタップすると詳細が表示されます</div>
     </div>
   </div>
 </div>
@@ -261,6 +300,16 @@ body { background: var(--bg); color: var(--text); font-family: -apple-system, Bl
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
     <div class="modal-title">📌 銘柄を追加</div>
+
+    <!-- コード検索ボックス -->
+    <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;padding:14px;margin-bottom:16px;">
+      <div class="form-label" style="margin-bottom:6px;">🔍 銘柄コードで自動入力</div>
+      <div style="display:flex;gap:8px;">
+        <input class="form-input" id="search_code" placeholder="例：8725" style="flex:1;" onkeydown="if(event.key==='Enter')searchStock()">
+        <button onclick="searchStock()" style="background:var(--accent);border:none;color:white;border-radius:8px;padding:8px 16px;cursor:pointer;font-weight:700;white-space:nowrap;">検索</button>
+      </div>
+      <div id="searchResult" style="margin-top:8px;font-size:12px;color:var(--muted);"></div>
+    </div>
     <div class="form-grid">
       <div class="form-item"><label class="form-label">銘柄コード</label><input class="form-input" id="f_code" placeholder="例：8725"></div>
       <div class="form-item"><label class="form-label">銘柄名</label><input class="form-input" id="f_name" placeholder="例：MS&AD"></div>
@@ -419,6 +468,10 @@ function selectStock(id) {
   document.getElementById('emptyDetail').style.display = 'none';
   renderList();
   renderDetail();
+  // スマホの場合は詳細タブに切り替え
+  if (window.innerWidth <= 900) {
+    switchTab('detail');
+  }
 }
 
 function genPriceData(price, days=120) {
@@ -702,6 +755,10 @@ function closeDetail() {
   document.getElementById('detailWrap').classList.remove('open');
   document.getElementById('emptyDetail').style.display = 'flex';
   renderList();
+  // スマホの場合はリストタブに戻る
+  if (window.innerWidth <= 900) {
+    switchTab('list');
+  }
 }
 
 function saveMemo(id) {
@@ -767,9 +824,125 @@ function addStock() {
   ['f_code','f_name','f_price','f_prev','f_target','f_stop','f_s1','f_r1','f_theme','f_bull','f_bear','f_note'].forEach(id=>{ document.getElementById(id).value=''; });
 }
 
+// ========== GAS設定（後で設定） ==========
+const GAS_URL = ''; // ← GASのURLをここに貼り付ける
+
+// ========== スマホタブ切り替え ==========
+function switchTab(tab) {
+  const isMobile = window.innerWidth <= 900;
+  if (!isMobile) return;
+  const listEl = document.getElementById('mobileList');
+  const detailEl = document.getElementById('mobileDetail');
+  const tabList = document.getElementById('tabList');
+  const tabDetail = document.getElementById('tabDetail');
+  if (tab === 'list') {
+    listEl.classList.remove('hide');
+    detailEl.classList.remove('show');
+    tabList.classList.add('active');
+    tabDetail.classList.remove('active');
+  } else {
+    listEl.classList.add('hide');
+    detailEl.classList.add('show');
+    tabList.classList.remove('active');
+    tabDetail.classList.add('active');
+  }
+}
+
+// ========== 銘柄マスター（コードで自動入力） ==========
+const STOCK_MASTER = {
+  '1301':'極洋','1305':'ダイワ上場投信-TOPIX','1306':'NEXT FUNDS TOPIX連動型','1321':'NEXT FUNDS 日経225',
+  '1489':'NEXT FUNDS 日経高配当株50','1658':'IS MSCI新興国株','1941':'中電工','1952':'新日本空調',
+  '1980':'ダイダン','2244':'グローバルX 半導体ETF','2503':'キリンHLDG','2559':'MAXIS全世界株式',
+  '2626':'GXデジタル日株ETF','2638':'GXロボ&AI日株ETF','2681':'ゲオHLDG','3107':'ダイワボウHD',
+  '3182':'オイシックス','3271':'THEグローバル社','3465':'ケイアイスター不動産','3708':'特種東海製紙',
+  '3710':'ジョルダン','3778':'さくらインターネット','3892':'岡山製紙','4025':'多木化学',
+  '4026':'神島化学工業','4063':'信越化学工業','4064':'日本カーバイド工業','4095':'日本パーカライジング',
+  '4220':'リケンテクノス','4259':'エクサウィザーズ','4410':'ハリマ化成グループ','4425':'Kudan',
+  '4992':'北興化学工業','5101':'横浜ゴム','5186':'ニッタ','5310':'東洋炭素',
+  '5595':'QPS研究所','5631':'日本製鋼所','5714':'DOWAホールディングス','5981':'東京製綱',
+  '5998':'アドバネクス','6227':'AIメカテック','6269':'三井海洋開発','6330':'東洋エンジニアリング',
+  '6340':'澁谷工業','6356':'日本ギア工業','6368':'オルガノ','6378':'木村化工機',
+  '6432':'竹内製作所','6448':'ブラザー工業','6498':'キッツ','6501':'日立製作所',
+  '6504':'富士電機','6533':'Orchestraホールディングス','6584':'三桜工業','6742':'京三製作所',
+  '6762':'TDK','6823':'リオン','6863':'ニレコ','6920':'レーザーテック',
+  '6958':'日本シイエムケイ','6965':'浜松ホトニクス','6986':'双葉電子工業','7013':'IHI',
+  '7069':'サイバー・バズ','7419':'ノジマ','7715':'長野計器','7823':'アートネイチャー',
+  '7931':'未来工業','8115':'ムーンバット','8154':'加賀電子','8242':'エイチ・ツー・オーリテイリング',
+  '8291':'日産東京販売HLDG','8387':'四国銀行','8503':'住友生命保険','8725':'MS&ADインシュアランス',
+  '8739':'スパークス・グループ','9041':'近鉄グループHLDG','9247':'TRE HLDG',
+  '9301':'三菱倉庫','9304':'澁澤倉庫','9450':'ファイバーゲート',
+  '186A':'アストロスケール','200A':'NF日経半導体株','285A':'キオクシアホールディングス',
+};
+
+function searchStock() {
+  const code = document.getElementById('search_code').value.trim();
+  const resultEl = document.getElementById('searchResult');
+  if (!code) { resultEl.textContent = 'コードを入力してください'; return; }
+
+  // マスターから銘柄名を取得
+  const name = STOCK_MASTER[code];
+  if (name) {
+    document.getElementById('f_code').value = code;
+    document.getElementById('f_name').value = name;
+    resultEl.innerHTML = `<span style="color:var(--green);font-weight:700;">✅ ${code} ${name} が見つかりました</span>`;
+
+    // GASが設定されていれば株価も取得
+    if (GAS_URL) {
+      resultEl.innerHTML += '<br>株価を取得中...';
+      fetchStockPrice(code).then(data => {
+        if (data) {
+          document.getElementById('f_price').value = data.price || '';
+          document.getElementById('f_prev').value = data.prev || '';
+          resultEl.innerHTML = `<span style="color:var(--green);font-weight:700;">✅ ${code} ${name}｜現在値：${data.price?.toLocaleString()}円</span>`;
+        }
+      });
+    }
+  } else {
+    // マスターにない場合でもコードだけセット
+    document.getElementById('f_code').value = code;
+    resultEl.innerHTML = `<span style="color:var(--yellow);">⚠️ 銘柄名が見つかりません。手動で入力してください。</span>`;
+  }
+}
+
+// ========== GAS経由で株価取得 ==========
+async function fetchStockPrice(code) {
+  if (!GAS_URL) return null;
+  try {
+    const res = await fetch(`${GAS_URL}?code=${code}`);
+    return await res.json();
+  } catch(e) {
+    console.error('株価取得エラー:', e);
+    return null;
+  }
+}
+
+// ========== 全銘柄の株価を一括更新 ==========
+async function updateAllPrices() {
+  if (!GAS_URL) {
+    alert('GASのURLが設定されていません。\nソースコードのGAS_URLに設定してください。');
+    return;
+  }
+  const btn = document.getElementById('updateBtn');
+  if (btn) { btn.textContent = '更新中...'; btn.disabled = true; }
+  let updated = 0;
+  for (const s of stocks) {
+    const data = await fetchStockPrice(s.code);
+    if (data && data.price) {
+      s.prev = s.price;
+      s.price = data.price;
+      updated++;
+    }
+    await new Promise(r => setTimeout(r, 300)); // APIへの負荷軽減
+  }
+  saveStocks();
+  renderList();
+  if (selectedId) renderDetail();
+  if (btn) { btn.textContent = `✅ ${updated}件更新`; setTimeout(() => { btn.textContent = '🔄 株価更新'; btn.disabled = false; }, 2000); }
+}
+
 document.getElementById('modalOverlay').addEventListener('click',function(e){ if(e.target===this)closeModal(); });
 
-// 初期化
+// ========== 初期化 ==========
 (function init() {
   loadStocks();
   if (!Array.isArray(stocks) || stocks.length === 0) {
