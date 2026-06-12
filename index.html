@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>株式監視ダッシュボード</title>
+<title>株式監視ダッシュボード v4</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <style>
 :root {
@@ -890,10 +890,12 @@ function searchStock() {
     if (GAS_URL) {
       resultEl.innerHTML += '<br>株価を取得中...';
       fetchStockPrice(code).then(data => {
-        if (data) {
+        if (data && data.ok) {
           document.getElementById('f_price').value = data.price || '';
           document.getElementById('f_prev').value = data.prev || '';
           resultEl.innerHTML = `<span style="color:var(--green);font-weight:700;">✅ ${code} ${name}｜現在値：${data.price?.toLocaleString()}円</span>`;
+        } else {
+          resultEl.innerHTML = `<span style="color:var(--yellow);">⚠️ 銘柄名は見つかりましたが、株価取得に失敗しました：${data?.error || '不明なエラー'}</span>`;
         }
       });
     }
@@ -905,39 +907,89 @@ function searchStock() {
 }
 
 // ========== GAS経由で株価取得 ==========
+// GAS側は「Yahoo Finance chart API」を読む方式を推奨。
+// 返却例：{ code:"7203", name:"Toyota Motor Corporation", price:3145, prev:3120, updated:"..." }
 async function fetchStockPrice(code) {
-  if (!GAS_URL) return null;
+  if (!GAS_URL) return { ok:false, error:'GAS_URL未設定' };
+
   try {
-    const res = await fetch(`${GAS_URL}?code=${code}`);
-    return await res.json();
+    const url = `${GAS_URL}?code=${encodeURIComponent(code)}`;
+    const res = await fetch(url, { method:'GET', cache:'no-store' });
+
+    if (!res.ok) {
+      return { ok:false, code, error:`HTTP ${res.status}` };
+    }
+
+    const data = await res.json();
+
+    if (data.error) {
+      return { ok:false, code, error:data.error };
+    }
+
+    const price = Number(data.price);
+    const prev = Number(data.prev);
+
+    if (!Number.isFinite(price) || price <= 0) {
+      return { ok:false, code, error:'priceが取得できませんでした', raw:data };
+    }
+
+    return {
+      ok:true,
+      code:String(data.code || code),
+      name:data.name || STOCK_MASTER[String(code)] || '',
+      price,
+      prev:Number.isFinite(prev) && prev > 0 ? prev : null,
+      updated:data.updated || ''
+    };
   } catch(e) {
-    console.error('株価取得エラー:', e);
-    return null;
+    console.error('株価取得エラー:', code, e);
+    return { ok:false, code, error:e.message || String(e) };
   }
 }
 
 // ========== 全銘柄の株価を一括更新 ==========
 async function updateAllPrices() {
   if (!GAS_URL) {
-    alert('GASのURLが設定されていません。\nソースコードのGAS_URLに設定してください。');
+    alert('GASのURLが設定されていません。\nソースコードのGAS_URLにウェブアプリURL（/exec）を設定してください。');
     return;
   }
+
   const btn = document.getElementById('updateBtn');
   if (btn) { btn.textContent = '更新中...'; btn.disabled = true; }
+
   let updated = 0;
+  const failed = [];
+
   for (const s of stocks) {
     const data = await fetchStockPrice(s.code);
-    if (data && data.price) {
-      s.prev = s.price;
+
+    if (data && data.ok) {
+      // GASから前日終値が返ればそれを優先。なければ更新前の価格を前日扱いにする。
+      s.prev = data.prev || s.price;
       s.price = data.price;
+      if (data.name && (!s.name || s.name === s.code)) s.name = data.name;
+      s.updated = data.updated || new Date().toLocaleString('ja-JP');
       updated++;
+    } else {
+      failed.push(`${s.code}: ${data?.error || '取得失敗'}`);
     }
-    await new Promise(r => setTimeout(r, 300)); // APIへの負荷軽減
+
+    await new Promise(r => setTimeout(r, 250)); // APIへの負荷軽減
   }
+
   saveStocks();
   renderList();
   if (selectedId) renderDetail();
-  if (btn) { btn.textContent = `✅ ${updated}件更新`; setTimeout(() => { btn.textContent = '🔄 株価更新'; btn.disabled = false; }, 2000); }
+
+  if (btn) {
+    btn.textContent = `✅ ${updated}件更新`;
+    setTimeout(() => { btn.textContent = '🔄 株価更新'; btn.disabled = false; }, 2500);
+  }
+
+  if (failed.length > 0) {
+    console.warn('株価更新失敗:', failed);
+    alert(`株価更新：${updated}件成功 / ${failed.length}件失敗\n\n失敗例：\n${failed.slice(0, 8).join('\n')}`);
+  }
 }
 
 document.getElementById('modalOverlay').addEventListener('click',function(e){ if(e.target===this)closeModal(); });
