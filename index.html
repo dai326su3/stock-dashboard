@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>株式監視ダッシュボード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --accent: #2563eb;
+  --green: #059669;
+  --red: #dc2626;
+  --yellow: #d97706;
+  --purple: #7c3aed;
+  --text: #1e293b;
+  --muted: #64748b;
+  --dim: #f1f5f9;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif; min-height: 100vh; font-size: 13px; }
+
+/* ヘッダー */
+.header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 20px; position: sticky; top: 0; z-index: 100; box-shadow: var(--shadow); }
+.header-inner { display: flex; justify-content: space-between; align-items: center; max-width: 1600px; margin: 0 auto; }
+.header-left { display: flex; align-items: center; gap: 20px; }
+.header-title { font-size: 18px; font-weight: 800; color: var(--accent); letter-spacing: -0.5px; }
+.header-stats { display: flex; gap: 12px; }
+.stat-chip { background: var(--dim); border-radius: 6px; padding: 4px 10px; font-size: 11px; color: var(--muted); }
+.stat-chip span { font-weight: 700; }
+.stat-chip .up { color: var(--green); }
+.stat-chip .down { color: var(--red); }
+.filters { display: flex; gap: 6px; }
+.filter-btn { background: var(--dim); border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s; }
+.filter-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+.btn-add { background: var(--accent); border: none; color: white; border-radius: 8px; padding: 8px 16px; cursor: pointer; font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 4px; }
+
+/* メインレイアウト */
+.main { max-width: 1600px; margin: 0 auto; padding: 16px; display: grid; grid-template-columns: 320px 1fr; gap: 16px; min-height: calc(100vh - 60px); }
+@media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+
+/* 銘柄リスト */
+.stock-list { display: flex; flex-direction: column; gap: 8px; }
+.list-header { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; padding: 0 4px; }
+
+/* 銘柄カード（リスト） */
+.stock-card { background: var(--card); border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: all 0.15s; box-shadow: var(--shadow); }
+.stock-card:hover { border-color: var(--accent); box-shadow: var(--shadow-lg); transform: translateY(-1px); }
+.stock-card.selected { border-color: var(--accent); background: #eff6ff; }
+.card-row1 { display: flex; justify-content: space-between; align-items: flex-start; }
+.card-code { font-size: 10px; color: var(--muted); font-family: monospace; font-weight: 600; }
+.card-name { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 1px; }
+.card-price-wrap { text-align: right; }
+.card-price { font-size: 20px; font-weight: 800; line-height: 1; }
+.card-chg { font-size: 12px; margin-top: 2px; font-weight: 600; }
+.up { color: var(--green); }
+.down { color: var(--red); }
+.badge-wrap { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.badge { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 600; border: 1px solid; }
+.badge-core { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+.badge-long { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+.badge-high { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.badge-watch { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+.score-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.score-num { font-size: 11px; font-weight: 700; min-width: 32px; }
+.score-track { flex: 1; height: 4px; background: #e2e8f0; border-radius: 2px; }
+.score-fill { height: 100%; border-radius: 2px; }
+.card-mini { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; margin-top: 8px; }
+.mini { background: var(--dim); border-radius: 6px; padding: 6px 8px; }
+.mini-l { font-size: 10px; color: var(--muted); }
+.mini-v { font-size: 12px; font-weight: 700; margin-top: 1px; }
+.mini-s { font-size: 10px; margin-top: 1px; }
+.alert-bar { border-radius: 6px; padding: 5px 10px; font-size: 11px; font-weight: 600; margin-bottom: 6px; }
+.alert-g { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+.alert-r { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+/* 詳細パネル */
+.detail-wrap { display: none; flex-direction: column; gap: 12px; }
+.detail-wrap.open { display: flex; }
+
+/* 詳細上部バー */
+.detail-topbar { background: var(--card); border-radius: 12px; padding: 16px 20px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+.topbar-inner { display: flex; justify-content: space-between; align-items: flex-start; }
+.topbar-left h2 { font-size: 22px; font-weight: 800; }
+.topbar-left .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.topbar-right { display: flex; align-items: flex-start; gap: 16px; }
+.price-big { font-size: 36px; font-weight: 900; line-height: 1; }
+.chg-big { font-size: 16px; font-weight: 700; margin-top: 4px; }
+.btn-close { background: var(--dim); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 18px; margin-left: 8px; }
+.btn-close:hover { background: #fee2e2; color: var(--red); }
+
+/* グリッドレイアウト（詳細） */
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 220px; gap: 12px; }
+.detail-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.detail-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+/* カード共通 */
+.dc { background: var(--card); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+.dc-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; gap: 4px; }
+
+/* チャート */
+.chart-wrap { position: relative; height: 200px; }
+.chart-wrap canvas { width: 100% !important; }
+
+/* サポレジ表 */
+.sr-table { width: 100%; border-collapse: collapse; }
+.sr-table tr { border-bottom: 1px solid var(--border); }
+.sr-table tr:last-child { border-bottom: none; }
+.sr-table td { padding: 6px 8px; font-size: 12px; }
+.sr-label { color: var(--muted); }
+.sr-val { font-weight: 700; text-align: right; }
+.sr-pct { color: var(--muted); font-size: 10px; text-align: right; }
+.sr-bar { display: flex; align-items: center; }
+.current-row { background: #eff6ff; }
+
+/* テクニカル */
+.tech-val { font-size: 32px; font-weight: 900; line-height: 1; }
+.tech-label-sm { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.rsi-track { height: 6px; background: linear-gradient(90deg, #059669, #d97706, #dc2626); border-radius: 3px; position: relative; margin-top: 10px; }
+.rsi-dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: #1e293b; border: 2px solid white; top: -2px; transform: translateX(-50%); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.rsi-markers { display: flex; justify-content: space-between; margin-top: 3px; }
+.rsi-marker { font-size: 9px; color: var(--muted); }
+
+/* 出来高ヒストグラム */
+.vol-bars { display: flex; align-items: flex-end; gap: 2px; height: 80px; }
+.vol-bar { flex: 1; border-radius: 2px 2px 0 0; min-width: 4px; }
+
+/* 価格帯出来高 */
+.pvp-wrap { position: relative; height: 200px; overflow: hidden; }
+.pvp-row { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
+.pvp-price { font-size: 10px; color: var(--muted); min-width: 38px; text-align: right; }
+.pvp-bar-wrap { flex: 1; height: 12px; position: relative; }
+.pvp-bar { height: 100%; border-radius: 2px; }
+.pvp-current { border: 2px solid var(--accent); background: #dbeafe !important; }
+
+/* 局面・トレンド */
+.situation-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+.trend-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.trend-up { background: #d1fae5; color: #065f46; }
+.trend-dn { background: #fee2e2; color: #991b1b; }
+.trend-neu { background: #f1f5f9; color: #475569; }
+
+/* 押し目段階 */
+.oshime-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.oshime-item { border-radius: 8px; padding: 10px; text-align: center; border: 1px solid; }
+.oshime-label { font-size: 10px; font-weight: 600; margin-bottom: 4px; }
+.oshime-range { font-size: 13px; font-weight: 800; }
+.oshime-sub { font-size: 10px; margin-top: 2px; }
+.oshime-light { background: #f0fdf4; border-color: #bbf7d0; }
+.oshime-main { background: #fef3c7; border-color: #fcd34d; }
+.oshime-deep { background: #fff1f2; border-color: #fecaca; }
+
+/* シナリオ */
+.scenario-item { border-radius: 8px; padding: 12px; }
+.scenario-bull { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.scenario-bear { background: #fff1f2; border: 1px solid #fecaca; }
+.scenario-t { font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+.scenario-txt { font-size: 12px; line-height: 1.7; color: var(--muted); }
+
+/* 注目・リスク */
+.point-list { list-style: none; }
+.point-list li { padding: 4px 0; font-size: 12px; display: flex; gap: 6px; line-height: 1.5; }
+.check { color: var(--green); }
+.warn { color: var(--red); }
+
+/* AI */
+.ai-btn { width: 100%; background: linear-gradient(135deg, #4f46e5, #7c3aed); border: none; color: white; border-radius: 8px; padding: 10px; cursor: pointer; font-weight: 700; font-size: 13px; margin-bottom: 10px; transition: opacity 0.2s; }
+.ai-btn:hover { opacity: 0.9; }
+.ai-btn:disabled { background: #94a3b8; cursor: default; }
+.ai-result { background: #f5f3ff; border: 1px solid #c4b5fd; border-radius: 8px; padding: 12px; }
+.ai-item-l { font-size: 10px; font-weight: 700; color: #7c3aed; margin-bottom: 3px; text-transform: uppercase; }
+.ai-item-t { font-size: 12px; line-height: 1.6; color: #3730a3; margin-bottom: 10px; }
+.ai-placeholder { background: var(--dim); border-radius: 8px; padding: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+/* メモ */
+.memo-area { width: 100%; background: var(--dim); border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: var(--text); font-size: 12px; line-height: 1.6; resize: vertical; min-height: 80px; font-family: inherit; }
+.memo-area:focus { outline: none; border-color: var(--accent); background: white; }
+.btn-save { background: var(--accent); border: none; color: white; border-radius: 6px; padding: 5px 14px; cursor: pointer; font-size: 12px; font-weight: 600; }
+
+/* モーダル */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; justify-content: center; align-items: center; padding: 20px; }
+.modal-overlay.open { display: flex; }
+.modal { background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
+.modal-title { font-size: 17px; font-weight: 800; margin-bottom: 18px; color: var(--accent); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-item { display: flex; flex-direction: column; gap: 4px; }
+.form-item.full { grid-column: 1/-1; }
+.form-label { font-size: 11px; color: var(--muted); font-weight: 600; }
+.form-input { background: var(--dim); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 13px; }
+.form-input:focus { outline: none; border-color: var(--accent); background: white; }
+.form-select { background: var(--dim); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 13px; }
+.modal-footer { display: flex; gap: 10px; margin-top: 18px; }
+.btn-primary { background: var(--accent); border: none; color: white; border-radius: 8px; padding: 10px 24px; cursor: pointer; font-weight: 700; font-size: 13px; }
+.btn-secondary { background: var(--dim); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 10px 24px; cursor: pointer; font-size: 13px; }
+
+/* テーマタグ */
+.theme-tag { font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: 600; }
+.t-ai { background: #ede9fe; color: #6d28d9; }
+.t-nuc { background: #fef3c7; color: #92400e; }
+.t-dc { background: #dbeafe; color: #1e40af; }
+.t-semi { background: #e0e7ff; color: #3730a3; }
+.t-fus { background: #fce7f3; color: #9d174d; }
+.t-def { background: #ffedd5; color: #9a3412; }
+.t-other { background: #f1f5f9; color: #475569; }
+
+/* 区切り線 */
+.divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+/* スクロール */
+.stock-list-wrap { overflow-y: auto; max-height: calc(100vh - 80px); padding-right: 4px; }
+.detail-scroll { overflow-y: auto; max-height: calc(100vh - 80px); }
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="header">
+  <div class="header-inner">
+    <div class="header-left">
+      <div class="header-title">📊 株式監視ダッシュボード</div>
+      <div class="header-stats" id="headerStats"></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <div class="filters">
+        <button class="filter-btn active" onclick="setFilter('all',this)">すべて</button>
+        <button class="filter-btn" onclick="setFilter('core',this)">コア</button>
+        <button class="filter-btn" onclick="setFilter('high',this)">ハイリスク</button>
+        <button class="filter-btn" onclick="setFilter('watch',this)">ウォッチ</button>
+      </div>
+      <button class="btn-add" onclick="openModal()">＋ 銘柄追加</button>
+    </div>
+  </div>
+</div>
+
+<!-- メイン -->
+<div class="main">
+  <!-- 左：銘柄リスト -->
+  <div class="stock-list-wrap">
+    <div class="list-header" id="listHeader">監視銘柄</div>
+    <div class="stock-list" id="stockList"></div>
+  </div>
+
+  <!-- 右：詳細 -->
+  <div class="detail-scroll">
+    <div class="detail-wrap" id="detailWrap">
+      <!-- JS で描画 -->
+    </div>
+    <div id="emptyDetail" style="display:flex;height:100%;align-items:center;justify-content:center;color:var(--muted);flex-direction:column;gap:12px;">
+      <div style="font-size:48px;">📊</div>
+      <div style="font-size:16px;font-weight:700;">銘柄を選択してください</div>
+      <div style="font-size:13px;">左のリストから銘柄をクリックすると詳細が表示されます</div>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-title">📌 銘柄を追加</div>
+    <div class="form-grid">
+      <div class="form-item"><label class="form-label">銘柄コード</label><input class="form-input" id="f_code" placeholder="例：8725"></div>
+      <div class="form-item"><label class="form-label">銘柄名</label><input class="form-input" id="f_name" placeholder="例：MS&AD"></div>
+      <div class="form-item"><label class="form-label">現在値（円）</label><input class="form-input" id="f_price" type="number"></div>
+      <div class="form-item"><label class="form-label">前日終値（円）</label><input class="form-input" id="f_prev" type="number"></div>
+      <div class="form-item"><label class="form-label">目標株価（円）</label><input class="form-input" id="f_target" type="number"></div>
+      <div class="form-item"><label class="form-label">ロスカット（円）</label><input class="form-input" id="f_stop" type="number"></div>
+      <div class="form-item"><label class="form-label">サポート①</label><input class="form-input" id="f_s1" type="number"></div>
+      <div class="form-item"><label class="form-label">レジスタンス①</label><input class="form-input" id="f_r1" type="number"></div>
+      <div class="form-item"><label class="form-label">RSI</label><input class="form-input" id="f_rsi" type="number" value="50"></div>
+      <div class="form-item"><label class="form-label">MACD</label><input class="form-input" id="f_macd" type="number" value="0"></div>
+      <div class="form-item"><label class="form-label">ポジション</label>
+        <select class="form-select" id="f_pos">
+          <option value="core">コア</option>
+          <option value="long">長期コア</option>
+          <option value="high">ハイリスク枠</option>
+          <option value="watch">ウォッチ</option>
+        </select>
+      </div>
+      <div class="form-item"><label class="form-label">テーマ（カンマ区切り）</label><input class="form-input" id="f_theme" placeholder="例：AI,原子力"></div>
+      <div class="form-item full"><label class="form-label">強気シナリオ</label><input class="form-input" id="f_bull" placeholder="上昇した場合のシナリオ"></div>
+      <div class="form-item full"><label class="form-label">弱気シナリオ</label><input class="form-input" id="f_bear" placeholder="下落した場合のシナリオ"></div>
+      <div class="form-item full"><label class="form-label">メモ・注目ポイント</label><textarea class="form-input memo-area" id="f_note" style="min-height:60px;"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" onclick="addStock()">追加する</button>
+      <button class="btn-secondary" onclick="closeModal()">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 初期データ ==========
+const DEFAULT_STOCKS = [
+  { id:1, code:"8725", name:"MS&ADインシュアランス", market:"東証プライム・保険", price:4552, prev:4597, target:5200, stop:4200, s1:4400, s2:4200, r1:4700, r2:5000, rsi:42, macd:-28, pos:"core", themes:["保険","AI"], bull:"4,400円サポートで反発→AI連携ニュースで再評価。5,000円→5,500円へ。", bear:"4,200円割れで急落。大規模自然災害発生で業績悪化リスク。", note:"V字底確認済み。NEC×アンソロピックAI連携ニュースあり。金利上昇追い風。昨日+0.90%と底堅い動き。", keyPoints:["4,500円近辺で下げ止まりの兆し","AI連携ニュースで再評価機運","海外事業好調・自社株買い積極的"], risks:["地政学リスクで大規模災害発生リスク","来期の特別利益反動","信用倍率は低く需給は良好"] },
+  { id:2, code:"7419", name:"ノジマ", market:"東証プライム・小売", price:1516, prev:1573, target:1800, stop:1500, s1:1500, s2:1400, r1:1650, r2:1800, rsi:38, macd:-45, pos:"core", themes:["小売","AI"], bull:"1,500円サポート維持→1,650円奪回で2,000円へ。過去最高益が下支え。", bear:"1,500円割れでトレンド崩れ。M&A依存の成長に疑問符。", note:"過去最高益。月足完全順列。1,500円サポートライン注目。今日-3.62%と大幅安。", keyPoints:["1,500円が強いサポートライン","過去最高益・来期も増収増益","月足・週足・日足すべて上昇トレンド"], risks:["急角度上昇による急落リスク","M&A依存の成長","信用倍率は普通"] },
+  { id:3, code:"3107", name:"ダイワボウHD", market:"東証プライム・卸売", price:3451, prev:3452, target:4000, stop:3200, s1:3400, s2:3200, r1:3700, r2:4000, rsi:45, macd:12, pos:"core", themes:["IT","DC","半導体"], bull:"3,400円サポートで底固め→GC形成で4,033円へ。", bear:"3,200円割れで下降トレンド。来期GIGAスクール特需の反動が重荷。", note:"PER8.7倍と割安。日足GC直前。来期減収減益予想が懸念。今日ほぼ横ばい底堅い。", keyPoints:["PER8.7倍と割安水準","日足ゴールデンクロス直前","3,400円でしっかり支えられている"], risks:["来期減収減益予想","GIGAスクール特需の反動","IT投資サイクルの変化"] },
+  { id:4, code:"8739", name:"スパークス・グループ", market:"東証プライム・証券", price:2151, prev:2127, target:2600, stop:2000, s1:2100, s2:2000, r1:2300, r2:2600, rsi:52, macd:18, pos:"core", themes:["金融","運用"], bull:"2,100円サポート確認→2,300円奪回で2,600円へ。全利益過去最高更新。", bear:"2,000円割れで急落。相場下落時に業績直撃。", note:"今週の下落相場で逆行高+1.13%。週足トレンドが最も健全。相場連動リスクあり。", keyPoints:["逆行高で需給の強さを証明","全利益項目が過去最高","週足が最も健全なトレンド"], risks:["相場下落時に業績直撃","運用資産目減りリスク","月足で乱高下の過去あり"] },
+  { id:5, code:"1952", name:"新日本空調", market:"東証プライム・建設", price:3250, prev:3245, target:3800, stop:2900, s1:3100, s2:2900, r1:3400, r2:3800, rsi:58, macd:32, pos:"long", themes:["原子力","DC冷却"], bull:"安定上昇継続。DC空調需要拡大で来期も最高益更新→3,800円へ。", bear:"特段のリスク要因なし。地合い悪化時の一時的な下落のみ。", note:"6期連続最高益。原発+DC空調の両輪。今週の下落相場で最も底堅い+0.15%。最強コア銘柄。", keyPoints:["6期連続最高益という圧倒的安定感","原子力+DC空調の両方に恩恵","今週の下落でも底堅く推移"], risks:["特段のリスク要因なし","地合い悪化時の一時下落のみ","やや大型で大化けしにくい"] },
+  { id:6, code:"4026", name:"神島化学工業", market:"東証プライム・化学", price:1795, prev:1933, target:2400, stop:1600, s1:1700, s2:1600, r1:2000, r2:2400, rsi:32, macd:-89, pos:"high", themes:["核融合","光海底ケーブル"], bull:"1,700円サポートで反発→来期の数字が出れば2,000円奪回。核融合テーマで大化け期待。", bear:"来期予想未定で売り継続→1,600円まで下落リスク。", note:"営業利益+50%の好決算も来期予想未定で急落。透明YAGセラミックスで核融合テーマ直結。", keyPoints:["RSI32と売られすぎ水準","透明YAGセラミックスが核融合に必須","今期営業利益+50%の好決算"], risks:["来期業績予想未定","核融合の実用化時期不透明","急落後の戻り売り圧力"] },
+  { id:7, code:"6356", name:"日本ギア工業", market:"東証スタンダード・機械", price:1378, prev:1425, target:1800, stop:1200, s1:1300, s2:1200, r1:1500, r2:1800, rsi:38, macd:-22, pos:"high", themes:["原子力"], bull:"原発再稼働ニュースで一気に急騰。1,800円以上も視野。受注残+38%が下支え。", bear:"原子力政策停滞で材料不足。出来高薄く地合いに左右される。", note:"国内原発バルブアクチュエータ9割シェア。自己資本84%の鉄壁財務。受注残+38%。", keyPoints:["国内シェア9割超の独占的地位","自己資本比率84%の鉄壁財務","受注残+38%で来期以降の業績担保"], risks:["出来高が薄く値動きが荒い","原子力政策停滞リスク","今期来期とも情報開示少ない"] },
+  { id:8, code:"6498", name:"キッツ", market:"東証プライム・機械", price:2255, prev:2228, target:2800, stop:2000, s1:2100, s2:2000, r1:2400, r2:2800, rsi:50, macd:15, pos:"core", themes:["DC","半導体","水素"], bull:"半導体回復・DC需要拡大で2,400円→2,800円へ。5期連続最高益が継続。", bear:"特定テーマへの集中度低く大化けしにくい。", note:"9万種類のバルブで半導体・DC・水素・原子力すべてに対応。5期連続最高益。今日+1.21%逆行高。", keyPoints:["9万種類のバルブで複数テーマに対応","5期連続最高益の安定成長","今日逆行高で需給の強さ証明"], risks:["特定テーマへの集中度低く大化けしにくい","バルブ市場の競合激化","原材料費上昇リスク"] }
+];
+
+let stocks = [], selectedId = null, currentFilter = 'all', aiResults = {}, chartInst = null;
+
+function loadStocks() {
+  try {
+    const s = localStorage.getItem('sd_v3');
+    if (s) {
+      const parsed = JSON.parse(s);
+      stocks = (Array.isArray(parsed) && parsed.length > 0) ? parsed : DEFAULT_STOCKS;
+    } else {
+      stocks = DEFAULT_STOCKS;
+    }
+  } catch(e) {
+    stocks = DEFAULT_STOCKS;
+  }
+  if (!Array.isArray(stocks) || stocks.length === 0) {
+    stocks = DEFAULT_STOCKS;
+  }
+}
+function saveStocks() { localStorage.setItem('sd_v3', JSON.stringify(stocks)); }
+
+function calcScore(s) {
+  let sc = 50;
+  if (s.rsi < 35) sc += 10; if (s.rsi > 65) sc -= 10;
+  if (s.macd > 0) sc += 8; else sc -= 8;
+  if (s.price >= s.prev) sc += 5; else sc -= 5;
+  const up = (s.target - s.price) / s.price;
+  if (up > 0.2) sc += 10; else if (up > 0.1) sc += 5;
+  return Math.min(Math.max(Math.round(sc), 10), 95);
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderList();
+}
+
+function getFiltered() {
+  return stocks.filter(s => {
+    if (currentFilter === 'all') return true;
+    if (currentFilter === 'core') return s.pos === 'core' || s.pos === 'long';
+    if (currentFilter === 'high') return s.pos === 'high';
+    if (currentFilter === 'watch') return s.pos === 'watch';
+    return true;
+  });
+}
+
+const themeClass = { 'AI':'t-ai','保険':'t-other','小売':'t-other','金融':'t-other','運用':'t-other','IT':'t-semi','原子力':'t-nuc','宇宙':'t-dc','DC':'t-dc','DC冷却':'t-dc','半導体':'t-semi','核融合':'t-fus','防衛':'t-def','水素':'t-dc','光海底ケーブル':'t-fus','機械':'t-other' };
+const posInfo = { core:['badge-core','コア'], long:['badge-long','長期コア'], high:['badge-high','ハイリスク枠'], watch:['badge-watch','ウォッチ'] };
+
+function themeHTML(themes) {
+  return (themes||[]).map(t => `<span class="theme-tag ${themeClass[t]||'t-other'}">${t}</span>`).join('');
+}
+function posBadge(pos) {
+  const [c,l] = posInfo[pos] || posInfo.core;
+  return `<span class="badge ${c}">${l}</span>`;
+}
+
+function renderStats() {
+  const up = stocks.filter(s=>s.price>=s.prev).length;
+  document.getElementById('headerStats').innerHTML = `
+    <div class="stat-chip">監視 <span>${stocks.length}</span>件</div>
+    <div class="stat-chip">上昇 <span class="up">${up}</span>件</div>
+    <div class="stat-chip">下落 <span class="down">${stocks.length-up}</span>件</div>`;
+}
+
+function renderList() {
+  renderStats();
+  const fs = getFiltered();
+  document.getElementById('listHeader').textContent = `監視銘柄（${fs.length}件）`;
+  document.getElementById('stockList').innerHTML = fs.map(s => {
+    const chg = ((s.price-s.prev)/s.prev*100).toFixed(2);
+    const isUp = s.price >= s.prev;
+    const sc = calcScore(s);
+    const scColor = sc>=60?'#059669':sc>=40?'#d97706':'#dc2626';
+    const up = ((s.target-s.price)/s.price*100).toFixed(1);
+    const dn = ((s.stop-s.price)/s.price*100).toFixed(1);
+    const toPct = (s.target-s.price)/s.price;
+    const slPct = (s.price-s.stop)/s.price;
+    let alerts = '';
+    if (toPct<0.05) alerts += `<div class="alert-bar alert-g">🎯 目標まで+${(toPct*100).toFixed(1)}%</div>`;
+    if (slPct<0.05) alerts += `<div class="alert-bar alert-r">⚠️ 損切まで${(slPct*100).toFixed(1)}%</div>`;
+    return `<div class="stock-card${selectedId===s.id?' selected':''}" onclick="selectStock(${s.id})">
+      ${alerts}
+      <div class="card-row1">
+        <div>
+          <div class="card-code">${s.code}</div>
+          <div class="card-name">${s.name}</div>
+          <div class="badge-wrap">${posBadge(s.pos)} ${themeHTML(s.themes)}</div>
+        </div>
+        <div class="card-price-wrap">
+          <div class="card-price ${isUp?'up':'down'}">${s.price.toLocaleString()}</div>
+          <div class="card-chg ${isUp?'up':'down'}">${isUp?'▲':'▼'}${Math.abs(chg)}%</div>
+        </div>
+      </div>
+      <div class="score-row">
+        <div class="score-num" style="color:${scColor}">${sc}</div>
+        <div class="score-track"><div class="score-fill" style="width:${sc}%;background:${scColor}"></div></div>
+        <div style="font-size:10px;color:var(--muted);">/ 100</div>
+      </div>
+      <div class="card-mini">
+        <div class="mini"><div class="mini-l">目標</div><div class="mini-v up">${s.target.toLocaleString()}</div><div class="mini-s up">+${up}%</div></div>
+        <div class="mini"><div class="mini-l">損切</div><div class="mini-v down">${s.stop.toLocaleString()}</div><div class="mini-s down">${dn}%</div></div>
+        <div class="mini"><div class="mini-l">RSI</div><div class="mini-v" style="color:${s.rsi<30?'var(--green)':s.rsi>70?'var(--red)':'var(--yellow)'}">${s.rsi}</div><div class="mini-s" style="color:${s.rsi<30?'var(--green)':s.rsi>70?'var(--red)':'var(--yellow)'}">${s.rsi<30?'過売':s.rsi>70?'過買':'中立'}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectStock(id) {
+  selectedId = id;
+  document.getElementById('emptyDetail').style.display = 'none';
+  renderList();
+  renderDetail();
+}
+
+function genPriceData(price, days=120) {
+  const d=[]; let p=price*0.82;
+  for(let i=days;i>=0;i--){ p=p*(1+(Math.random()-0.495)*0.022); d.push(Math.round(p)); }
+  d[d.length-1]=price; return d;
+}
+
+function genVolData(days=120) {
+  return Array.from({length:days},()=>Math.round(Math.random()*900000+100000));
+}
+
+function getSituation(s) {
+  if(s.rsi<30) return {text:'急落後のリバウンド待ち',color:'#059669',bg:'#d1fae5'};
+  if(s.rsi>70) return {text:'買われすぎ・調整に注意',color:'#dc2626',bg:'#fee2e2'};
+  if(s.macd>0 && s.price>=s.prev) return {text:'上昇トレンド継続中',color:'#059669',bg:'#d1fae5'};
+  if(s.macd<0 && s.price<s.prev) return {text:'調整・下落トレンド中',color:'#dc2626',bg:'#fee2e2'};
+  return {text:'もみ合い・方向感を確認中',color:'#d97706',bg:'#fef3c7'};
+}
+
+function getOshime(s) {
+  const shallow = { lo:Math.round(s.price*0.97), hi:Math.round(s.price*1.0) };
+  const main = { lo:s.s1, hi:Math.round(s.s1*1.02) };
+  const deep = { lo:s.s2||Math.round(s.stop*1.05), hi:s.s1 };
+  return { shallow, main, deep };
+}
+
+function renderDetail() {
+  const s = stocks.find(x=>x.id===selectedId); if(!s) return;
+  const w = document.getElementById('detailWrap');
+  w.classList.add('open');
+  const chg = ((s.price-s.prev)/s.prev*100).toFixed(2);
+  const isUp = s.price>=s.prev;
+  const sit = getSituation(s);
+  const osh = getOshime(s);
+  const ai = aiResults[s.id];
+  const levels = [
+    {label:'上抜け加速ライン',val:s.r2||s.target,color:'#dc2626'},
+    {label:'レジスタンス②（強）',val:s.r2||Math.round(s.target*0.96),color:'#ef4444'},
+    {label:'レジスタンス①（中）',val:s.r1,color:'#f97316'},
+    {label:'最重要ライン（直近支持帯）',val:s.s1,color:'#059669',bold:true},
+    {label:'サポート①',val:s.s1,color:'#10b981'},
+    {label:'サポート②（中）',val:s.s2||Math.round(s.stop*1.05),color:'#059669'},
+    {label:'下抜け加速ライン',val:s.stop,color:'#7f1d1d'},
+  ].sort((a,b)=>b.val-a.val);
+
+  w.innerHTML = `
+  <!-- トップバー -->
+  <div class="detail-topbar">
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <div style="font-size:11px;color:var(--muted);font-family:monospace;font-weight:600;">${s.code} · ${s.market}</div>
+        <h2 style="font-size:22px;font-weight:800;margin-top:2px;">${s.name}</h2>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+          ${posBadge(s.pos)} ${themeHTML(s.themes)}
+          <span class="situation-badge" style="background:${sit.bg};color:${sit.color};">${sit.text}</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div>
+          <div class="price-big ${isUp?'up':'down'}">${s.price.toLocaleString()}<span style="font-size:16px;font-weight:400;"> 円</span></div>
+          <div class="chg-big ${isUp?'up':'down'}">${isUp?'▲':'▼'}${Math.abs(chg)}% （前日比 ${isUp?'+':''}${(s.price-s.prev).toLocaleString()}円）</div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <span class="trend-badge ${s.rsi<40?'trend-dn':s.rsi>60?'trend-up':'trend-neu'}">短期 ${s.rsi<40?'弱気':s.rsi>60?'強気':'中立'}</span>
+            <span class="trend-badge ${s.macd<0?'trend-dn':'trend-up'}">中期 ${s.macd<0?'弱気':'強気'}</span>
+          </div>
+        </div>
+        <button class="btn-close" onclick="closeDetail()">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 第1行：チャート2つ + サポレジ + 価格帯出来高 -->
+  <div class="detail-grid">
+    <div class="dc">
+      <div class="dc-title">📉 短期チャート（5日・5分足）</div>
+      <div class="chart-wrap"><canvas id="chart5d"></canvas></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">5日間で${chg}%変動。${s.s1.toLocaleString()}円の支持帯で推移。</div>
+      <div style="margin-top:8px;"><div class="dc-title" style="margin-bottom:6px;">出来高（万株）</div><div class="vol-bars" id="volBars5d" style="height:50px;"></div></div>
+    </div>
+    <div class="dc">
+      <div class="dc-title">📈 日足チャート（6か月）</div>
+      <div class="chart-wrap"><canvas id="chart6m"></canvas></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">高値${Math.round(s.price*1.15).toLocaleString()}円から急落後、${s.s1.toLocaleString()}〜${Math.round(s.s1*1.05).toLocaleString()}円付近で推移。</div>
+    </div>
+    <div class="dc">
+      <div class="dc-title">📊 サポート＆レジスタンス</div>
+      <table class="sr-table">
+        ${levels.map(l=>{
+          const isCur = Math.abs(l.val-s.price)/s.price < 0.03;
+          return `<tr${isCur?' class="current-row"':''}>
+            <td class="sr-label" style="border-left:3px solid ${l.color};padding-left:8px;${l.bold?'font-weight:700;color:var(--text);':''}">${l.label}</td>
+            <td class="sr-val" style="color:${l.color};">${l.val.toLocaleString()}円</td>
+            <td class="sr-pct">${((l.val-s.price)/s.price*100).toFixed(1)}%</td>
+          </tr>`;
+        }).join('')}
+      </table>
+    </div>
+    <div class="dc">
+      <div class="dc-title">📊 価格帯別出来高（日足）</div>
+      <div id="pvpChart" style="height:200px;overflow:hidden;"></div>
+    </div>
+  </div>
+
+  <!-- 第2行：テクニカル + 適正価格 + 局面 -->
+  <div class="detail-grid-3">
+    <div class="dc">
+      <div class="dc-title">📉 テクニカル指標（日足ベース）</div>
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">RSI（14日）</div>
+        <div class="tech-val" style="color:${s.rsi<30?'var(--red)':s.rsi>70?'var(--red)':'var(--muted)'}">${s.rsi} <span style="font-size:14px;color:${s.rsi<30?'var(--red)':s.rsi>70?'var(--red)':'var(--muted)'};">${s.rsi<30?'（売られすぎ域）':s.rsi>70?'（買われすぎ域）':'（中立）'}</span></div>
+        <div class="rsi-track"><div class="rsi-dot" style="left:${s.rsi}%;"></div></div>
+        <div class="rsi-markers"><span class="rsi-marker">0</span><span class="rsi-marker">30</span><span class="rsi-marker">50</span><span class="rsi-marker">70</span><span class="rsi-marker">100</span></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">MACD（12,26,9）</div>
+        <div class="tech-val" style="color:${s.macd>0?'var(--green)':'var(--red)'};">${s.macd>0?'+':''}${s.macd} <span style="font-size:14px;">${s.macd>0?'（ゴールデンクロス傾向）':'（デッドクロス・弱気）'}</span></div>
+      </div>
+      <hr class="divider" style="margin:12px 0;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">移動平均乖離率</div>
+      ${[['5日',s.rsi<50?-8.3:3.2],['25日',s.rsi<50?-15.6:8.1],['75日',s.rsi<50?-14.2:12.3]].map(([l,v])=>`
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px;">
+          <span style="color:var(--muted);">・${l}</span>
+          <span style="color:${v<0?'var(--red)':'var(--green)'}; font-weight:700;">${v>0?'+':''}${v}%</span>
+        </div>`).join('')}
+    </div>
+    <div class="dc">
+      <div class="dc-title">💰 適正価格（チャート推定）</div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">適正価格レンジ</div>
+        <div style="font-size:24px;font-weight:800;">${Math.round(s.s1*1.02).toLocaleString()} <span style="color:var(--muted);font-size:16px;">〜</span> ${Math.round(s.r1*0.98).toLocaleString()} <span style="font-size:14px;font-weight:400;">円</span></div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">適正価格（中央値）</div>
+        <div style="font-size:22px;font-weight:800;color:var(--accent);">${Math.round((s.s1+s.r1)/2).toLocaleString()} <span style="font-size:14px;font-weight:400;">円</span></div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">割安・割高判定</div>
+        <div style="font-size:18px;font-weight:800;color:${s.price<s.s1?'var(--green)':s.price>s.r1?'var(--red)':'var(--yellow)'};">
+          ${s.price<s.s1?'🟢 割安':s.price>s.r1?'🔴 割高':'🟡 適正'}
+        </div>
+      </div>
+      <hr class="divider">
+      <div style="font-size:11px;color:var(--muted);margin:8px 0 4px;">目標まで</div>
+      <div style="font-size:18px;font-weight:800;color:var(--green);">+${((s.target-s.price)/s.price*100).toFixed(1)}% （${s.target.toLocaleString()}円）</div>
+      <div style="font-size:11px;color:var(--muted);margin:8px 0 4px;">ロスカットまで</div>
+      <div style="font-size:18px;font-weight:800;color:var(--red);">${((s.stop-s.price)/s.price*100).toFixed(1)}% （${s.stop.toLocaleString()}円）</div>
+    </div>
+    <div class="dc">
+      <div class="dc-title">📋 出来高分析（日足）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">直近出来高</div><div style="font-size:15px;font-weight:800;margin-top:2px;">${Math.round(Math.random()*20+10)}万株</div></div>
+        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">平均出来高25日</div><div style="font-size:15px;font-weight:800;margin-top:2px;">${Math.round(Math.random()*10+5)}万株</div></div>
+        <div style="text-align:center;"><div style="font-size:10px;color:var(--muted);">出来高トレンド</div><div style="font-size:13px;font-weight:800;margin-top:4px;color:${isUp?'var(--green)':'var(--red)'};">${isUp?'増加傾向':'減少傾向'}</div></div>
+      </div>
+      <hr class="divider">
+      <div class="dc-title" style="margin-top:10px;">🎯 押し目3段階（日足ベース）</div>
+      <div class="oshime-grid">
+        <div class="oshime-item oshime-light">
+          <div class="oshime-label" style="color:#059669;">浅め押し目<br>（今が浅め押し目）</div>
+          <div class="oshime-range">${osh.shallow.lo.toLocaleString()}〜${osh.shallow.hi.toLocaleString()}円</div>
+          <div class="oshime-sub" style="color:var(--muted);">直近支持帯内<br>例：反発の初動ゾーン</div>
+        </div>
+        <div class="oshime-item oshime-main">
+          <div class="oshime-label" style="color:#d97706;">本命押し目<br>（サポート①付近）</div>
+          <div class="oshime-range">${osh.main.lo.toLocaleString()}〜${osh.main.hi.toLocaleString()}円</div>
+          <div class="oshime-sub" style="color:var(--muted);">例：反発期待ゾーン</div>
+        </div>
+        <div class="oshime-item oshime-deep">
+          <div class="oshime-label" style="color:#dc2626;">深め押し目<br>（サポート②付近）</div>
+          <div class="oshime-range">${osh.deep.lo.toLocaleString()}〜${osh.deep.hi.toLocaleString()}円</div>
+          <div class="oshime-sub" style="color:var(--muted);">例：下落継続リスク</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 第3行：注目・リスク・シナリオ・AI・メモ -->
+  <div class="detail-grid-2">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="dc">
+        <div class="dc-title">✅ 注目ポイント / ⚠️ リスク要因</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:6px;">注目ポイント</div>
+            <ul class="point-list">
+              ${(s.keyPoints||['分析データなし']).map(p=>`<li><span class="check">✓</span>${p}</li>`).join('')}
+            </ul>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:6px;">リスク要因</div>
+            <ul class="point-list">
+              ${(s.risks||['リスクデータなし']).map(r=>`<li><span class="warn">▲</span>${r}</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="dc">
+        <div class="dc-title">📊 強気・弱気シナリオ</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div class="scenario-item scenario-bull">
+            <div class="scenario-t" style="color:var(--green);">📈 強気シナリオ</div>
+            <div class="scenario-txt">${s.bull||'—'}</div>
+          </div>
+          <div class="scenario-item scenario-bear">
+            <div class="scenario-t" style="color:var(--red);">📉 弱気シナリオ</div>
+            <div class="scenario-txt">${s.bear||'—'}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div class="dc">
+        <div class="dc-title">🤖 AI分析（Claude）</div>
+        <button class="ai-btn" id="aiBtn" onclick="runAI(${s.id})">🤖 AI分析を実行する</button>
+        <div id="aiResult">
+          ${ai?`<div class="ai-result"><div class="ai-item-l">📍 現在の局面</div><div class="ai-item-t">${ai.situation}</div><div class="ai-item-l">👁 注目ポイント</div><div class="ai-item-t">${ai.point}</div><div class="ai-item-l">⚠️ リスク要因</div><div class="ai-item-t">${ai.risk}</div></div>`:`<div class="ai-placeholder">「AI分析を実行」を押すとClaudeがリアルタイムで分析します</div>`}
+        </div>
+      </div>
+      <div class="dc">
+        <div class="memo-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div class="dc-title" style="margin:0;">📝 メモ・備考スペース</div>
+          <button class="btn-save" onclick="saveMemo(${s.id})">保存</button>
+        </div>
+        <textarea class="memo-area" id="memoArea" placeholder="銘柄についてのメモを自由に入力...">${s.note||''}</textarea>
+        <div style="text-align:right;margin-top:6px;">
+          <button onclick="deleteStock(${s.id})" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline;">🗑 この銘柄を削除</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  setTimeout(() => {
+    drawChart5d(s);
+    draw6mChart(s);
+    drawPVP(s);
+  }, 50);
+}
+
+function drawChart5d(s) {
+  const ctx = document.getElementById('chart5d'); if(!ctx) return;
+  const data = genPriceData(s.price, 60);
+  new Chart(ctx, { type:'line', data:{ labels:data.map((_,i)=>''), datasets:[{ data, borderColor:s.price>=s.prev?'#059669':'#dc2626', borderWidth:1.5, fill:false, pointRadius:0, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{display:false}, y:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10},callback:v=>v.toLocaleString()}, border:{display:false} } } } });
+  const vd = document.getElementById('volBars5d'); if(!vd) return;
+  const vols = genVolData(60);
+  const maxV = Math.max(...vols);
+  vd.innerHTML = vols.map(v=>`<div class="vol-bar" style="height:${(v/maxV*100)}%;background:#e2e8f0;"></div>`).join('');
+}
+
+function draw6mChart(s) {
+  const ctx = document.getElementById('chart6m'); if(!ctx) return;
+  const data = genPriceData(s.price, 120);
+  const labels = data.map((_,i)=>i%20===0?`${120-i}d`:'');
+  new Chart(ctx, { type:'line', data:{ labels, datasets:[{ data, borderColor:'#2563eb', borderWidth:2, fill:false, pointRadius:0, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10}} }, y:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10},callback:v=>v.toLocaleString()}, border:{display:false} } } } });
+}
+
+function drawPVP(s) {
+  const el = document.getElementById('pvpChart'); if(!el) return;
+  const priceRange = s.r2 - s.stop;
+  const step = Math.round(priceRange / 12);
+  const rows = [];
+  for(let p=s.r2; p>=s.stop; p-=step) {
+    const isCur = Math.abs(p-s.price) < step*0.8;
+    const isHighVol = (p >= s.s1-step && p <= s.s1+step) || (p >= s.r1-step && p <= s.r1+step);
+    const vol = isHighVol ? Math.round(Math.random()*40+50) : Math.round(Math.random()*30+10);
+    rows.push({p, vol, isCur, isHighVol});
+  }
+  const maxV = Math.max(...rows.map(r=>r.vol));
+  el.innerHTML = rows.map(r=>`
+    <div class="pvp-row" style="margin-bottom:3px;">
+      <div class="pvp-price" style="font-size:10px;color:${r.isCur?'var(--accent)':'var(--muted)'};">${r.p.toLocaleString()}</div>
+      <div class="pvp-bar-wrap">
+        <div class="pvp-bar${r.isCur?' pvp-current':''}" style="width:${r.vol/maxV*100}%;background:${r.isHighVol?'#2563eb':r.isCur?'#dbeafe':'#e2e8f0'};height:12px;border-radius:2px;"></div>
+      </div>
+      ${r.isCur?`<div style="font-size:10px;color:var(--accent);font-weight:700;margin-left:4px;">← 現在</div>`:''}
+    </div>`).join('');
+}
+
+function closeDetail() {
+  selectedId = null;
+  document.getElementById('detailWrap').classList.remove('open');
+  document.getElementById('emptyDetail').style.display = 'flex';
+  renderList();
+}
+
+function saveMemo(id) {
+  const s = stocks.find(x=>x.id===id); if(!s) return;
+  s.note = document.getElementById('memoArea').value;
+  saveStocks();
+  const btn = document.querySelector('.btn-save');
+  if(btn){ btn.textContent='✅ 保存済'; setTimeout(()=>{btn.textContent='保存';},1500); }
+}
+
+function deleteStock(id) {
+  if(!confirm('この銘柄を削除しますか？')) return;
+  stocks = stocks.filter(s=>s.id!==id);
+  saveStocks();
+  closeDetail();
+  renderList();
+}
+
+async function runAI(id) {
+  const s = stocks.find(x=>x.id===id); if(!s) return;
+  const btn = document.getElementById('aiBtn');
+  const res = document.getElementById('aiResult');
+  btn.disabled=true; btn.textContent='分析中...';
+  res.innerHTML='<div class="ai-placeholder">Claudeが分析しています...</div>';
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`株式銘柄を分析。${s.code} ${s.name}、現在値${s.price}円、前日比${((s.price-s.prev)/s.prev*100).toFixed(2)}%、RSI:${s.rsi}、MACD:${s.macd}、サポート:${s.s1}円、レジスタンス:${s.r1}円、目標:${s.target}円、損切:${s.stop}円。JSON形式のみ返してください：{"situation":"現在の局面50文字以内","point":"注目ポイント50文字以内","risk":"リスク要因50文字以内"}`}]})});
+    const d = await r.json();
+    const parsed = JSON.parse(d.content?.[0]?.text?.replace(/```json|```/g,'')||'{}');
+    aiResults[id]=parsed;
+    res.innerHTML=`<div class="ai-result"><div class="ai-item-l">📍 現在の局面</div><div class="ai-item-t">${parsed.situation}</div><div class="ai-item-l">👁 注目ポイント</div><div class="ai-item-t">${parsed.point}</div><div class="ai-item-l">⚠️ リスク要因</div><div class="ai-item-t">${parsed.risk}</div></div>`;
+  } catch(e) { res.innerHTML='<div class="ai-placeholder">分析に失敗しました。再度お試しください。</div>'; }
+  btn.disabled=false; btn.textContent='🤖 AI分析を実行する';
+}
+
+function openModal(){ document.getElementById('modalOverlay').classList.add('open'); }
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); }
+
+function addStock() {
+  const code=document.getElementById('f_code').value.trim();
+  const name=document.getElementById('f_name').value.trim();
+  const price=parseInt(document.getElementById('f_price').value);
+  if(!code||!name||!price){alert('コード・銘柄名・現在値は必須です');return;}
+  const s={
+    id:Date.now(),code,name,market:'東証',
+    price,prev:parseInt(document.getElementById('f_prev').value)||price,
+    target:parseInt(document.getElementById('f_target').value)||Math.round(price*1.2),
+    stop:parseInt(document.getElementById('f_stop').value)||Math.round(price*0.9),
+    s1:parseInt(document.getElementById('f_s1').value)||Math.round(price*0.97),
+    s2:Math.round(price*0.93),
+    r1:parseInt(document.getElementById('f_r1').value)||Math.round(price*1.05),
+    r2:Math.round(price*1.1),
+    rsi:parseInt(document.getElementById('f_rsi').value)||50,
+    macd:parseInt(document.getElementById('f_macd').value)||0,
+    pos:document.getElementById('f_pos').value,
+    themes:document.getElementById('f_theme').value.split(',').map(t=>t.trim()).filter(Boolean),
+    bull:document.getElementById('f_bull').value,
+    bear:document.getElementById('f_bear').value,
+    note:document.getElementById('f_note').value,
+    keyPoints:['データを入力してください'],
+    risks:['データを入力してください'],
+  };
+  stocks.push(s); saveStocks(); closeModal(); renderList();
+  ['f_code','f_name','f_price','f_prev','f_target','f_stop','f_s1','f_r1','f_theme','f_bull','f_bear','f_note'].forEach(id=>{ document.getElementById(id).value=''; });
+}
+
+document.getElementById('modalOverlay').addEventListener('click',function(e){ if(e.target===this)closeModal(); });
+
+// 初期化
+(function init() {
+  loadStocks();
+  if (!Array.isArray(stocks) || stocks.length === 0) {
+    stocks = JSON.parse(JSON.stringify(DEFAULT_STOCKS));
+  }
+  renderList();
+})();
+</script>
+</body>
+</html>
