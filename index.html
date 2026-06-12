@@ -475,9 +475,21 @@ function selectStock(id) {
 }
 
 function genPriceData(price, days=120) {
+  // 履歴データがない銘柄用の仮データ。通常はGASから取得した history を使う。
   const d=[]; let p=price*0.82;
   for(let i=days;i>=0;i--){ p=p*(1+(Math.random()-0.495)*0.022); d.push(Math.round(p)); }
   d[d.length-1]=price; return d;
+}
+
+function getHistoryData(s, days=120) {
+  const h = Array.isArray(s.history) ? s.history.filter(x => Number.isFinite(Number(x.close))) : [];
+  if (h.length > 1) {
+    return h.slice(-days).map(x => ({ label: x.date || '', value: Number(x.close) }));
+  }
+  return genPriceData(s.price, days).map((v, i, arr) => ({
+    label: i % 20 === 0 ? `${arr.length - i}d` : '',
+    value: v
+  }));
 }
 
 function genVolData(days=120) {
@@ -713,8 +725,9 @@ function renderDetail() {
 
 function drawChart5d(s) {
   const ctx = document.getElementById('chart5d'); if(!ctx) return;
-  const data = genPriceData(s.price, 60);
-  new Chart(ctx, { type:'line', data:{ labels:data.map((_,i)=>''), datasets:[{ data, borderColor:s.price>=s.prev?'#059669':'#dc2626', borderWidth:1.5, fill:false, pointRadius:0, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{display:false}, y:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10},callback:v=>v.toLocaleString()}, border:{display:false} } } } });
+  const points = getHistoryData(s, 5);
+  const data = points.map(p => p.value);
+  new Chart(ctx, { type:'line', data:{ labels:points.map(p=>p.label), datasets:[{ data, borderColor:s.price>=s.prev?'#059669':'#dc2626', borderWidth:1.5, fill:false, pointRadius:0, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{display:false}, y:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10},callback:v=>v.toLocaleString()}, border:{display:false} } } } });
   const vd = document.getElementById('volBars5d'); if(!vd) return;
   const vols = genVolData(60);
   const maxV = Math.max(...vols);
@@ -723,8 +736,9 @@ function drawChart5d(s) {
 
 function draw6mChart(s) {
   const ctx = document.getElementById('chart6m'); if(!ctx) return;
-  const data = genPriceData(s.price, 120);
-  const labels = data.map((_,i)=>i%20===0?`${120-i}d`:'');
+  const points = getHistoryData(s, 120);
+  const labels = points.map((p,i)=>i%20===0 || i===points.length-1 ? p.label : '');
+  const data = points.map(p => p.value);
   new Chart(ctx, { type:'line', data:{ labels, datasets:[{ data, borderColor:'#2563eb', borderWidth:2, fill:false, pointRadius:0, tension:0.3 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10}} }, y:{ grid:{color:'#f1f5f9'}, ticks:{color:'#94a3b8',font:{size:10},callback:v=>v.toLocaleString()}, border:{display:false} } } } });
 }
 
@@ -908,7 +922,7 @@ function searchStock() {
 
 // ========== GAS経由で株価取得 ==========
 // GAS側は「Yahoo Finance chart API」を読む方式を推奨。
-// 返却例：{ code:"7203", name:"Toyota Motor Corporation", price:3145, prev:3120, updated:"..." }
+// 返却例：{ code:"7203", name:"Toyota Motor Corporation", price:3145, prev:3120, history:[{date:"06/12",close:3145}], updated:"..." }
 async function fetchStockPrice(code) {
   if (!GAS_URL) return { ok:false, error:'GAS_URL未設定' };
 
@@ -939,6 +953,7 @@ async function fetchStockPrice(code) {
       name:data.name || STOCK_MASTER[String(code)] || '',
       price,
       prev:Number.isFinite(prev) && prev > 0 ? prev : null,
+      history:Array.isArray(data.history) ? data.history : [],
       updated:data.updated || ''
     };
   } catch(e) {
@@ -967,6 +982,7 @@ async function updateAllPrices() {
       // GASから前日終値が返ればそれを優先。なければ更新前の価格を前日扱いにする。
       s.prev = data.prev || s.price;
       s.price = data.price;
+      if (Array.isArray(data.history) && data.history.length > 0) s.history = data.history;
       if (data.name && (!s.name || s.name === s.code)) s.name = data.name;
       s.updated = data.updated || new Date().toLocaleString('ja-JP');
       updated++;
